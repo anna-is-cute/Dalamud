@@ -25,6 +25,11 @@ using Lumina.Excel.GeneratedSheets;
 using Serilog;
 using TerraFX.Interop.Windows;
 using Windows.Win32.Storage.FileSystem;
+using Windows.Win32.System.Memory;
+using Windows.Win32.System.Ole;
+
+using HWND = Windows.Win32.Foundation.HWND;
+using Win32_PInvoke = Windows.Win32.PInvoke;
 
 namespace Dalamud.Utility;
 
@@ -736,6 +741,69 @@ public static class Util
         }
     }
 
+    /// <summary>
+    /// Copy files to the clipboard as if they were copied in Explorer.
+    /// </summary>
+    /// <param name="paths">Full paths to files to be copied.</param>
+    /// <returns>Returns true on success.</returns>
+    internal static unsafe bool CopyFilesToClipboard(IEnumerable<string> paths)
+    {
+        var pathBytes = paths
+                        .Select(Encoding.Unicode.GetBytes)
+                        .ToArray();
+        var pathBytesSize = pathBytes
+                            .Select(bytes => bytes.Length)
+                            .Sum();
+        var sizeWithTerminators = pathBytesSize + (pathBytes.Length * 2);
+
+        var dropFilesSize = sizeof(DROPFILES);
+        var hGlobal = Win32_PInvoke.GlobalAlloc_SafeHandle(
+            GLOBAL_ALLOC_FLAGS.GHND,
+            // struct size + size of encoded strings + null terminator for each
+            // string + two null terminators for end of list
+            (uint)(dropFilesSize + sizeWithTerminators + 4));
+        var dropFiles = (DROPFILES*)Win32_PInvoke.GlobalLock(hGlobal);
+
+        *dropFiles = default;
+        dropFiles->fWide = true;
+        dropFiles->pFiles = (uint)dropFilesSize;
+
+        var pathLoc = (byte*)((nint)dropFiles + dropFilesSize);
+        foreach (var bytes in pathBytes)
+        {
+            // copy the encoded strings
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                pathLoc![i] = bytes[i];
+            }
+
+            // null terminate
+            pathLoc![bytes.Length] = 0;
+            pathLoc[bytes.Length + 1] = 0;
+            pathLoc += bytes.Length + 2;
+        }
+
+        // double null terminator for end of list
+        for (var i = 0; i < 4; i++)
+        {
+            pathLoc![i] = 0;
+        }
+
+        Win32_PInvoke.GlobalUnlock(hGlobal);
+
+        if (Win32_PInvoke.OpenClipboard(HWND.Null))
+        {
+            Win32_PInvoke.SetClipboardData(
+                (uint)CLIPBOARD_FORMAT.CF_HDROP,
+                hGlobal);
+            Win32_PInvoke.CloseClipboard();
+            return true;
+        }
+
+        hGlobal.Dispose();
+        return false;
+    }
+
     private static void ShowSpanProperty(ulong addr, IList<string> path, PropertyInfo p, object obj)
     {
         var objType = obj.GetType();
@@ -1029,60 +1097,5 @@ public static class Util
         }
 
         ImGui.PopStyleVar();
-    }
-
-    internal static unsafe bool CopyFilesToClipboard(IEnumerable<string> paths)
-    {
-        var pathBytes = paths
-            .Select(Encoding.Unicode.GetBytes);
-        var pathBytesSize = paths
-            .Select(bytes => bytes.Count)
-            .Sum();
-
-        var dropFilesSize = sizeof(DROPFILES);
-        var hGlobal = Win32_PInvoke.GlobalAlloc_SafeHandle(
-            GLOBAL_ALLOC_FLAGS.GHND,
-            // struct size + size of encoded strings + null terminator for each
-            // string + two null terminators for end of list
-            (uint)(dropFilesSize + pathBytesSize + pathBytes.Count + 2));
-        var dropFiles = (DROPFILES*)Win32_PInvoke.GlobalLock(hGlobal);
-
-        *dropFiles = default;
-        dropFiles->fWide = true;
-        dropFiles->pFiles = (uint)dropFilesSize;
-
-        var pathLoc = (byte*)((nint)dropFiles + dropFilesSize);
-        var i = 0;
-        foreach (var bytes in pathBytes)
-        {
-            // copy the encoded strings
-            for (var j = 0; j < pathBytes.Length; j++)
-            {
-                pathLoc![i + j] = bytes[j];
-                i += 1;
-            }
-
-            // null terminate
-            pathLoc[i + bytes.Length] = 0;
-            i += 1;
-        }
-
-        // double null terminator for end of list
-        pathLoc![i] = 0;
-        pathLoc[i + 1] = 0;
-
-        Win32_PInvoke.GlobalUnlock(hGlobal);
-
-        if (Win32_PInvoke.OpenClipboard(HWND.Null))
-        {
-            Win32_PInvoke.SetClipboardData(
-                (uint)CLIPBOARD_FORMAT.CF_HDROP,
-                hGlobal);
-            Win32_PInvoke.CloseClipboard();
-            return true;
-        }
-
-        hGlobal.Dispose();
-        return false;
     }
 }

@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 using CheapLoc;
 using Dalamud.Configuration.Internal;
@@ -13,12 +12,6 @@ using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Internal;
 using Dalamud.Utility;
 using Serilog;
-using Windows.Win32.Foundation;
-using Windows.Win32.System.Memory;
-using Windows.Win32.System.Ole;
-using Windows.Win32.UI.Shell;
-
-using Win32_PInvoke = Windows.Win32.PInvoke;
 
 namespace Dalamud.Interface.Internal;
 
@@ -429,13 +422,9 @@ internal class DalamudCommands : IServiceType
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "XIVLauncher",
             "dalamud.log");
-        if (Util.CopyFilesToClipboard([logPath]))
-        {
-            chatGui.Print(string.Format(Loc.Localize("DalamudLogCopySuccess", "Log file copied to clipboard."), "default"));
-        }
-        else
-        {
-            chatGui.Print(string.Format(Loc.Localize("DalamudLogCopyFailure", "Could not copy log file to clipboard."), "default"));
-        }
+        var message = Util.CopyFilesToClipboard([logPath])
+                          ? Loc.Localize("DalamudLogCopySuccess", "Log file copied to clipboard.")
+                          : Loc.Localize("DalamudLogCopyFailure", "Could not copy log file to clipboard.");
+        chatGui.Print(message);
     }
 }
