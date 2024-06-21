@@ -424,51 +424,18 @@ internal class DalamudCommands : IServiceType
 
     private void OnCopyLogCommand(string command, string arguments)
     {
+        var chatGui = Service<ChatGui>.Get();
         var logPath = Path.Join(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "XIVLauncher",
             "dalamud.log");
-        var pathBytes = Encoding.Unicode.GetBytes(logPath);
-
-        var chatGui = Service<ChatGui>.Get();
-
-        unsafe
+        if (Util.CopyFilesToClipboard([logPath]))
         {
-            var dropFilesSize = sizeof(DROPFILES);
-            var hGlobal = Win32_PInvoke.GlobalAlloc_SafeHandle(
-                GLOBAL_ALLOC_FLAGS.GHND,
-                (uint)(dropFilesSize + pathBytes.Length + 2));
-            var dropFiles = (DROPFILES*)Win32_PInvoke.GlobalLock(hGlobal);
-
-            *dropFiles = default;
-            dropFiles->fWide = true;
-            dropFiles->pFiles = (uint)dropFilesSize;
-
-            var pathLoc = (byte*)((nint)dropFiles + dropFilesSize);
-            for (var i = 0; i < pathBytes.Length; i++)
-            {
-                pathLoc![i] = pathBytes[i];
-            }
-
-            pathLoc![pathBytes.Length] = 0;
-            pathLoc[pathBytes.Length + 1] = 0;
-
-            Win32_PInvoke.GlobalUnlock(hGlobal);
-
-            if (Win32_PInvoke.OpenClipboard(HWND.Null))
-            {
-                Win32_PInvoke.SetClipboardData(
-                    (uint)CLIPBOARD_FORMAT.CF_HDROP,
-                    hGlobal);
-                Win32_PInvoke.CloseClipboard();
-
-                chatGui.Print(string.Format(Loc.Localize("DalamudLogCopySuccess", "Log file copied to clipboard."), "default"));
-            }
-            else
-            {
-                hGlobal.Dispose();
-                chatGui.Print(string.Format(Loc.Localize("DalamudLogCopyFailure", "Could not copy log file to clipboard."), "default"));
-            }
+            chatGui.Print(string.Format(Loc.Localize("DalamudLogCopySuccess", "Log file copied to clipboard."), "default"));
+        }
+        else
+        {
+            chatGui.Print(string.Format(Loc.Localize("DalamudLogCopyFailure", "Could not copy log file to clipboard."), "default"));
         }
     }
 }
